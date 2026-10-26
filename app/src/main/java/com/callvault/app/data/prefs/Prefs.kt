@@ -18,6 +18,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("biometrics", true)
         set(v) { sp.edit().putBoolean("biometrics", v).apply() }
 
+    var bitrateKbps: Int
+        get() = sp.getInt("bitrate_kbps", 96)
+        set(v) { sp.edit().putInt("bitrate_kbps", v).apply() }
+
     fun hasPin(): Boolean = sp.getString("pin_hash", null) != null
 
     fun setPin(pin: String) { sp.edit().putString("pin_hash", hash(pin)).apply() }

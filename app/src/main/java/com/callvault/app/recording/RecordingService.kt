@@ -98,6 +98,7 @@ class RecordingService : Service() {
                     RecordingEntity(
                         fileName = file.name,
                         filePath = file.absolutePath,
+                        contactName = com.callvault.app.utils.ContactLookup.name(this@RecordingService, target),
                         phoneNumber = target,
                         callType = type,
                         timestamp = System.currentTimeMillis() - duration,

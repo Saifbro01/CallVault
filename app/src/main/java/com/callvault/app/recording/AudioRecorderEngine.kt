@@ -25,7 +25,7 @@ class AudioRecorderEngine(private val context: Context) {
             mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             mr.setAudioSamplingRate(44100)
-            mr.setAudioEncodingBitRate(96000)
+            mr.setAudioEncodingBitRate(com.callvault.app.data.prefs.Prefs(context).bitrateKbps * 1000)
             mr.setOutputFile(file.absolutePath)
             mr.prepare()
             mr.start()

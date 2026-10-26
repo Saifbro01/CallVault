@@ -18,6 +18,8 @@ import com.callvault.app.data.model.CallType
 import com.callvault.app.data.prefs.Prefs
 import com.callvault.app.recording.RecordingService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -46,7 +48,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var playingId by mutableStateOf<Long?>(null)
         private set
 
+    var progress by mutableStateOf(0f)
+        private set
+    var bitrate by mutableStateOf(prefs.bitrateKbps)
+        private set
+
     private var player: ExoPlayer? = null
+    private var progressJob: Job? = null
 
     init { purgeExpired() }
 
@@ -85,6 +93,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         p.prepare()
         p.play()
         playingId = rec.id
+        progress = 0f
+        progressJob?.cancel()
+        progressJob = viewModelScope.launch {
+            while (playingId != null) {
+                val d = p.duration
+                if (d > 0) progress = (p.currentPosition.toFloat() / d).coerceIn(0f, 1f)
+                delay(250)
+            }
+        }
+    }
+
+    fun seekTo(fraction: Float) {
+        val p = player ?: return
+        val d = p.duration
+        if (d > 0) { p.seekTo((d * fraction).toLong()); progress = fraction }
     }
 
     private fun stopPlayback() {
@@ -93,6 +116,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---- library actions ----
+    fun rename(rec: RecordingEntity, name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.setContactName(rec.id, name.trim().ifEmpty { null })
+        }
+    }
+
     fun toggleFavorite(rec: RecordingEntity) {
         viewModelScope.launch(Dispatchers.IO) { dao.setFavorite(rec.id, !rec.isFavorite) }
     }
@@ -140,6 +169,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun updateAutoRecord(v: Boolean) { prefs.autoRecord = v; autoRecord = v }
 
     fun updateRetention(days: Int) { prefs.retentionDays = days; retentionDays = days; purgeExpired() }
+
+    fun updateBitrate(k: Int) { prefs.bitrateKbps = k; bitrate = k }
 
     fun updateBiometrics(v: Boolean) { prefs.biometrics = v; biometrics = v }
 

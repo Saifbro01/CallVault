@@ -26,6 +26,8 @@ import com.callvault.app.ui.recordings.RecordingsScreen
 import com.callvault.app.ui.settings.SettingsScreen
 import com.callvault.app.ui.trash.TrashScreen
 import com.callvault.app.utils.CompatibilityChecker
+import com.callvault.app.utils.ShareHelper
+import androidx.compose.ui.platform.LocalContext
 
 private data class Tab(val screen: Screen, val label: String, val icon: ImageVector)
 
@@ -36,6 +38,7 @@ fun MainApp(vm: MainViewModel, onToggleRecord: (Boolean) -> Unit) {
     val trash by vm.trash.collectAsState()
     val isRecording by RecordingService.isRecording.collectAsState()
     val compat = CompatibilityChecker.generateReport()
+    val context = LocalContext.current
 
     val tabs = listOf(
         Tab(Screen.Recordings, "Recordings", Icons.Default.Mic),
@@ -70,11 +73,15 @@ fun MainApp(vm: MainViewModel, onToggleRecord: (Boolean) -> Unit) {
                 RecordingsScreen(
                     recordings = recordings,
                     playingId = vm.playingId,
+                    progress = vm.progress,
                     isRecording = isRecording,
                     onToggleRecord = { onToggleRecord(isRecording) },
                     onPlay = vm::togglePlay,
+                    onSeek = vm::seekTo,
                     onFavorite = vm::toggleFavorite,
-                    onTrash = vm::moveToTrash
+                    onTrash = vm::moveToTrash,
+                    onShare = { ShareHelper.share(context, it) },
+                    onRename = vm::rename
                 )
             }
             composable(Screen.Trash.route) {
@@ -98,7 +105,11 @@ fun MainApp(vm: MainViewModel, onToggleRecord: (Boolean) -> Unit) {
                     onRemovePin = vm::removePin,
                     biometrics = vm.biometrics,
                     onBiometrics = vm::updateBiometrics,
-                    compat = compat
+                    compat = compat,
+                    bitrate = vm.bitrate,
+                    onBitrate = vm::updateBitrate,
+                    recordingCount = recordings.size,
+                    totalBytes = recordings.sumOf { it.fileSizeBytes }
                 )
             }
         }

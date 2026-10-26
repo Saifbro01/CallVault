@@ -1,16 +1,20 @@
 package com.callvault.app.ui.recordings
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,26 +28,40 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private val filters = listOf("All", "Favorites", "Incoming", "Outgoing", "Manual")
+
 @Composable
 fun RecordingsScreen(
     recordings: List<RecordingEntity>,
     playingId: Long?,
+    progress: Float,
     isRecording: Boolean,
     onToggleRecord: () -> Unit,
     onPlay: (RecordingEntity) -> Unit,
+    onSeek: (Float) -> Unit,
     onFavorite: (RecordingEntity) -> Unit,
-    onTrash: (RecordingEntity) -> Unit
+    onTrash: (RecordingEntity) -> Unit,
+    onShare: (RecordingEntity) -> Unit,
+    onRename: (RecordingEntity, String) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var favOnly by remember { mutableStateOf(false) }
+    var filter by remember { mutableStateOf("All") }
+    var renaming by remember { mutableStateOf<RecordingEntity?>(null) }
 
-    val filtered = remember(recordings, query, favOnly) {
+    val filtered = remember(recordings, query, filter) {
         val fFull = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
         val fShort = SimpleDateFormat("MMM d", Locale.getDefault())
         val fIso = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val q = query.trim().lowercase(Locale.getDefault())
         recordings.filter { rec ->
-            if (favOnly && !rec.isFavorite) return@filter false
+            val typeOk = when (filter) {
+                "Favorites" -> rec.isFavorite
+                "Incoming" -> rec.callType == CallType.INCOMING
+                "Outgoing" -> rec.callType == CallType.OUTGOING
+                "Manual" -> rec.callType == CallType.MANUAL
+                else -> true
+            }
+            if (!typeOk) return@filter false
             if (q.isEmpty()) return@filter true
             val d = Date(rec.timestamp)
             rec.fileName.lowercase().contains(q) ||
@@ -55,22 +73,36 @@ fun RecordingsScreen(
         }
     }
 
+    renaming?.let { target ->
+        var text by remember(target.id) { mutableStateOf(target.contactName ?: "") }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Rename") },
+            text = {
+                OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true, placeholder = { Text("Name") })
+            },
+            confirmButton = { TextButton(onClick = { onRename(target, text); renaming = null }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } }
+        )
+    }
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search by number or date (e.g. Oct 24)") },
+                placeholder = { Text("Search by name, number or date (e.g. Oct 24)") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true
             )
             Row(
-                Modifier.padding(horizontal = 16.dp),
+                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FilterChip(selected = !favOnly, onClick = { favOnly = false }, label = { Text("All") })
-                FilterChip(selected = favOnly, onClick = { favOnly = true }, label = { Text("Favorites") })
+                filters.forEach { f ->
+                    FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) })
+                }
             }
             if (filtered.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -85,7 +117,10 @@ fun RecordingsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(filtered, key = { it.id }) { rec ->
-                        RecordingRow(rec, rec.id == playingId, onPlay, onFavorite, onTrash)
+                        RecordingRow(
+                            rec, rec.id == playingId, progress,
+                            onPlay, onSeek, onFavorite, onTrash, onShare, { renaming = it }
+                        )
                     }
                 }
             }
@@ -105,9 +140,13 @@ fun RecordingsScreen(
 private fun RecordingRow(
     rec: RecordingEntity,
     playing: Boolean,
+    progress: Float,
     onPlay: (RecordingEntity) -> Unit,
+    onSeek: (Float) -> Unit,
     onFavorite: (RecordingEntity) -> Unit,
-    onTrash: (RecordingEntity) -> Unit
+    onTrash: (RecordingEntity) -> Unit,
+    onShare: (RecordingEntity) -> Unit,
+    onRename: (RecordingEntity) -> Unit
 ) {
     val title = rec.contactName ?: rec.phoneNumber ?: when (rec.callType) {
         CallType.INCOMING -> "Incoming call"
@@ -115,28 +154,34 @@ private fun RecordingRow(
         CallType.MANUAL -> "Voice recording"
     }
     Card(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { onPlay(rec) }) {
-                Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play")
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onPlay(rec) }) {
+                    Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play")
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "${Format.date(rec.timestamp)}  •  ${Format.duration(rec.durationMs)}  •  ${Format.size(rec.fileSizeBytes)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "${Format.date(rec.timestamp)}  •  ${Format.duration(rec.durationMs)}  •  ${Format.size(rec.fileSizeBytes)}",
-                    style = MaterialTheme.typography.bodySmall
-                )
+            if (playing) {
+                Slider(value = progress, onValueChange = onSeek, modifier = Modifier.padding(horizontal = 8.dp))
             }
-            IconButton(onClick = { onFavorite(rec) }) {
-                Icon(
-                    if (rec.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = "Favorite"
-                )
-            }
-            IconButton(onClick = { onTrash(rec) }) {
-                Icon(Icons.Default.Delete, contentDescription = "Move to trash")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = { onRename(rec) }) { Icon(Icons.Default.Edit, contentDescription = "Rename") }
+                IconButton(onClick = { onShare(rec) }) { Icon(Icons.Default.Share, contentDescription = "Share") }
+                IconButton(onClick = { onFavorite(rec) }) {
+                    Icon(
+                        if (rec.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Favorite"
+                    )
+                }
+                IconButton(onClick = { onTrash(rec) }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Move to trash")
+                }
             }
         }
     }

@@ -26,6 +26,9 @@ interface RecordingDao {
     @Query("UPDATE recordings SET isFavorite = :fav WHERE id = :id")
     suspend fun setFavorite(id: Long, fav: Boolean)
 
+    @Query("UPDATE recordings SET contactName = :name WHERE id = :id")
+    suspend fun setContactName(id: Long, name: String?)
+
     @Query("UPDATE recordings SET deletedAt = :ts WHERE id = :id")
     suspend fun setDeletedAt(id: Long, ts: Long?)
 

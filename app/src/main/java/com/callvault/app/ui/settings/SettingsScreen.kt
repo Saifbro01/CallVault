@@ -74,7 +74,11 @@ fun SettingsScreen(
     onRemovePin: () -> Unit,
     biometrics: Boolean,
     onBiometrics: (Boolean) -> Unit,
-    compat: com.callvault.app.data.model.CompatibilityReport
+    compat: com.callvault.app.data.model.CompatibilityReport,
+    bitrate: Int,
+    onBitrate: (Int) -> Unit,
+    recordingCount: Int,
+    totalBytes: Long
 ) {
     var showPin by remember { mutableStateOf(false) }
 
@@ -109,6 +113,16 @@ fun SettingsScreen(
             trailingContent = { Switch(checked = autoRecord, onCheckedChange = onAutoRecord) }
         )
         ListItem(
+            headlineContent = { Text("Audio quality") },
+            supportingContent = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(64 to "Low", 96 to "Standard", 128 to "High").forEach { (k, label) ->
+                        FilterChip(selected = bitrate == k, onClick = { onBitrate(k) }, label = { Text(label) })
+                    }
+                }
+            }
+        )
+        ListItem(
             headlineContent = { Text("Trash retention") },
             supportingContent = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -134,6 +148,11 @@ fun SettingsScreen(
                 modifier = Modifier.clickable { onRemovePin() }
             )
         }
+        SectionTitle("Storage")
+        ListItem(
+            headlineContent = { Text("$recordingCount recordings") },
+            supportingContent = { Text(com.callvault.app.utils.Format.size(totalBytes) + " used") }
+        )
         SectionTitle("About this phone")
         ListItem(
             headlineContent = { Text("${compat.manufacturer} ${compat.model}") },
