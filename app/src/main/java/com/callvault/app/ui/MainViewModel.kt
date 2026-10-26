@@ -2,10 +2,12 @@ package com.callvault.app.ui
 
 import android.app.Application
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -17,6 +19,8 @@ import com.callvault.app.data.database.RecordingEntity
 import com.callvault.app.data.model.CallType
 import com.callvault.app.data.prefs.Prefs
 import com.callvault.app.recording.RecordingService
+import com.callvault.app.utils.Lang
+import com.callvault.app.utils.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,6 +29,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = (app as CallVaultApplication).database.recordingDao()
@@ -56,7 +62,126 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var player: ExoPlayer? = null
     private var progressJob: Job? = null
 
-    init { purgeExpired() }
+    var message by mutableStateOf<String?>(null)
+    var bangla by mutableStateOf(prefs.bangla)
+        private set
+
+    init {
+        Lang.bangla = prefs.bangla
+        purgeExpired()
+    }
+
+    fun clearMessage() { message = null }
+
+    fun updateBangla(v: Boolean) { prefs.bangla = v; bangla = v; Lang.bangla = v }
+
+    fun trashMany(list: List<RecordingEntity>) {
+        list.forEach { if (playingId == it.id) stopPlayback() }
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            list.forEach { dao.setDeletedAt(it.id, now) }
+        }
+    }
+
+    private val audioExt = setOf("amr", "3gp", "m4a", "mp3", "aac", "wav", "ogg", "opus", "mp4")
+
+    fun importFromFolder(uri: Uri) {
+        val ctx = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                try {
+                    ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (e: Exception) { /* not persistable, fine */ }
+                val root = DocumentFile.fromTreeUri(ctx, uri)
+                if (root == null) {
+                    message = tr("Could not open that folder", "ফোল্ডারটি খোলা যায়নি")
+                    return@launch
+                }
+                val existing = dao.getAllNames().toHashSet()
+                val dir = File(ctx.filesDir, "recordings").apply { mkdirs() }
+                var count = 0
+
+                fun walk(d: DocumentFile) {
+                    for (f in d.listFiles()) {
+                        if (f.isDirectory) { walk(f); continue }
+                        val orig = f.name ?: continue
+                        val ext = orig.substringAfterLast('.', "").lowercase()
+                        val isAudio = (f.type?.startsWith("audio/") == true) || ext in audioExt
+                        if (!isAudio) continue
+                        val name = "imp_$orig"
+                        if (name in existing) continue
+                        val out = File(dir, name)
+                        val copied = ctx.contentResolver.openInputStream(f.uri)?.use { input ->
+                            out.outputStream().use { o -> input.copyTo(o) }
+                            true
+                        } ?: false
+                        if (!copied) continue
+                        val dur = try {
+                            val r = MediaMetadataRetriever()
+                            r.setDataSource(out.absolutePath)
+                            val d2 = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                            r.release()
+                            d2
+                        } catch (e: Exception) { 0L }
+                        val lower = orig.lowercase()
+                        val type = when {
+                            lower.contains("incoming") -> CallType.INCOMING
+                            lower.contains("outgoing") -> CallType.OUTGOING
+                            else -> CallType.MANUAL
+                        }
+                        val title = orig.substringBeforeLast('.').replace('_', ' ').trim()
+                        kotlinx.coroutines.runBlocking {
+                            dao.insert(
+                                RecordingEntity(
+                                    fileName = name,
+                                    filePath = out.absolutePath,
+                                    contactName = title,
+                                    callType = type,
+                                    timestamp = if (f.lastModified() > 0) f.lastModified() else System.currentTimeMillis(),
+                                    durationMs = dur,
+                                    fileSizeBytes = out.length(),
+                                    audioFormat = ext.ifEmpty { "m4a" }
+                                )
+                            )
+                        }
+                        existing.add(name)
+                        count++
+                    }
+                }
+                walk(root)
+                message = if (count == 0) tr("No new audio files found", "নতুন কোনো অডিও ফাইল পাওয়া যায়নি")
+                else tr("Imported $count recordings", "$count টি রেকর্ডিং ইম্পোর্ট হয়েছে")
+            } catch (e: Exception) {
+                message = tr("Import failed: ${e.localizedMessage}", "ইম্পোর্ট ব্যর্থ: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun exportBackup(uri: Uri) {
+        val ctx = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val list = dao.getAll()
+                var count = 0
+                ctx.contentResolver.openOutputStream(uri)?.use { os ->
+                    ZipOutputStream(os).use { z ->
+                        list.forEach { r ->
+                            val f = File(r.filePath)
+                            if (f.exists()) {
+                                z.putNextEntry(ZipEntry(f.name))
+                                f.inputStream().use { it.copyTo(z) }
+                                z.closeEntry()
+                                count++
+                            }
+                        }
+                    }
+                }
+                message = tr("Backup saved ($count recordings)", "ব্যাকআপ সেভ হয়েছে ($count টি রেকর্ডিং)")
+            } catch (e: Exception) {
+                message = tr("Backup failed: ${e.localizedMessage}", "ব্যাকআপ ব্যর্থ: ${e.localizedMessage}")
+            }
+        }
+    }
 
     // ---- recording ----
     fun startManual() {

@@ -27,6 +27,9 @@ import com.callvault.app.ui.settings.SettingsScreen
 import com.callvault.app.ui.trash.TrashScreen
 import com.callvault.app.utils.CompatibilityChecker
 import com.callvault.app.utils.ShareHelper
+import com.callvault.app.utils.tr
+import android.widget.Toast
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 
 private data class Tab(val screen: Screen, val label: String, val icon: ImageVector)
@@ -39,11 +42,17 @@ fun MainApp(vm: MainViewModel, onToggleRecord: (Boolean) -> Unit) {
     val isRecording by RecordingService.isRecording.collectAsState()
     val compat = CompatibilityChecker.generateReport()
     val context = LocalContext.current
+    LaunchedEffect(vm.message) {
+        vm.message?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            vm.clearMessage()
+        }
+    }
 
     val tabs = listOf(
-        Tab(Screen.Recordings, "Recordings", Icons.Default.Mic),
-        Tab(Screen.Trash, "Trash", Icons.Default.Delete),
-        Tab(Screen.Settings, "Settings", Icons.Default.Settings)
+        Tab(Screen.Recordings, tr("Recordings", "রেকর্ডিং"), Icons.Default.Mic),
+        Tab(Screen.Trash, tr("Trash", "ট্র্যাশ"), Icons.Default.Delete),
+        Tab(Screen.Settings, tr("Settings", "সেটিংস"), Icons.Default.Settings)
     )
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
@@ -80,6 +89,7 @@ fun MainApp(vm: MainViewModel, onToggleRecord: (Boolean) -> Unit) {
                     onSeek = vm::seekTo,
                     onFavorite = vm::toggleFavorite,
                     onTrash = vm::moveToTrash,
+                    onTrashMany = vm::trashMany,
                     onShare = { ShareHelper.share(context, it) },
                     onRename = vm::rename
                 )
@@ -96,18 +106,8 @@ fun MainApp(vm: MainViewModel, onToggleRecord: (Boolean) -> Unit) {
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(
-                    autoRecord = vm.autoRecord,
-                    onAutoRecord = vm::updateAutoRecord,
-                    retentionDays = vm.retentionDays,
-                    onRetention = vm::updateRetention,
-                    pinEnabled = vm.pinEnabled,
-                    onSetPin = vm::setPin,
-                    onRemovePin = vm::removePin,
-                    biometrics = vm.biometrics,
-                    onBiometrics = vm::updateBiometrics,
+                    vm = vm,
                     compat = compat,
-                    bitrate = vm.bitrate,
-                    onBitrate = vm::updateBitrate,
                     recordingCount = recordings.size,
                     totalBytes = recordings.sumOf { it.fileSizeBytes }
                 )

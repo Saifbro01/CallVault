@@ -39,6 +39,8 @@ class AudioRecorderEngine(private val context: Context) {
         file
     }
 
+    fun amplitude(): Int = try { recorder?.maxAmplitude ?: 0 } catch (e: Exception) { 0 }
+
     fun stopRecording(): Result<Pair<File, Long>> = runCatching {
         val file = outputFile ?: error("Not recording")
         val duration = System.currentTimeMillis() - startedAt

@@ -1,5 +1,7 @@
 package com.callvault.app.ui.recordings
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,11 +26,20 @@ import androidx.compose.ui.unit.dp
 import com.callvault.app.data.database.RecordingEntity
 import com.callvault.app.data.model.CallType
 import com.callvault.app.utils.Format
+import com.callvault.app.utils.tr
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val filters = listOf("All", "Favorites", "Incoming", "Outgoing", "Manual")
+private enum class FilterMode(val en: String, val bn: String) {
+    ALL("All", "সব"), FAV("Favorites", "প্রিয়"), IN("Incoming", "ইনকামিং"),
+    OUT("Outgoing", "আউটগোয়িং"), MANUAL("Manual", "ম্যানুয়াল")
+}
+
+private enum class SortMode(val en: String, val bn: String) {
+    NEWEST("Newest", "নতুন আগে"), OLDEST("Oldest", "পুরনো আগে"),
+    LONGEST("Longest", "লম্বা আগে"), LARGEST("Largest", "বড় আগে")
+}
 
 @Composable
 fun RecordingsScreen(
@@ -41,25 +52,28 @@ fun RecordingsScreen(
     onSeek: (Float) -> Unit,
     onFavorite: (RecordingEntity) -> Unit,
     onTrash: (RecordingEntity) -> Unit,
+    onTrashMany: (List<RecordingEntity>) -> Unit,
     onShare: (RecordingEntity) -> Unit,
     onRename: (RecordingEntity, String) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var filter by remember { mutableStateOf("All") }
+    var filter by remember { mutableStateOf(FilterMode.ALL) }
+    var sort by remember { mutableStateOf(SortMode.NEWEST) }
     var renaming by remember { mutableStateOf<RecordingEntity?>(null) }
+    var selected by remember { mutableStateOf(setOf<Long>()) }
 
-    val filtered = remember(recordings, query, filter) {
+    val filtered = remember(recordings, query, filter, sort) {
         val fFull = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
         val fShort = SimpleDateFormat("MMM d", Locale.getDefault())
         val fIso = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val q = query.trim().lowercase(Locale.getDefault())
-        recordings.filter { rec ->
+        val list = recordings.filter { rec ->
             val typeOk = when (filter) {
-                "Favorites" -> rec.isFavorite
-                "Incoming" -> rec.callType == CallType.INCOMING
-                "Outgoing" -> rec.callType == CallType.OUTGOING
-                "Manual" -> rec.callType == CallType.MANUAL
-                else -> true
+                FilterMode.FAV -> rec.isFavorite
+                FilterMode.IN -> rec.callType == CallType.INCOMING
+                FilterMode.OUT -> rec.callType == CallType.OUTGOING
+                FilterMode.MANUAL -> rec.callType == CallType.MANUAL
+                FilterMode.ALL -> true
             }
             if (!typeOk) return@filter false
             if (q.isEmpty()) return@filter true
@@ -71,43 +85,83 @@ fun RecordingsScreen(
                 fShort.format(d).lowercase().contains(q) ||
                 fIso.format(d).contains(q)
         }
+        when (sort) {
+            SortMode.NEWEST -> list.sortedByDescending { it.timestamp }
+            SortMode.OLDEST -> list.sortedBy { it.timestamp }
+            SortMode.LONGEST -> list.sortedByDescending { it.durationMs }
+            SortMode.LARGEST -> list.sortedByDescending { it.fileSizeBytes }
+        }
     }
 
     renaming?.let { target ->
         var text by remember(target.id) { mutableStateOf(target.contactName ?: "") }
         AlertDialog(
             onDismissRequest = { renaming = null },
-            title = { Text("Rename") },
+            title = { Text(tr("Rename", "নাম পরিবর্তন")) },
             text = {
-                OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true, placeholder = { Text("Name") })
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it }, singleLine = true,
+                    placeholder = { Text(tr("Name", "নাম")) }
+                )
             },
-            confirmButton = { TextButton(onClick = { onRename(target, text); renaming = null }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } }
+            confirmButton = {
+                TextButton(onClick = { onRename(target, text); renaming = null }) { Text(tr("Save", "সেভ")) }
+            },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text(tr("Cancel", "বাতিল")) } }
         )
     }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search by name, number or date (e.g. Oct 24)") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true
-            )
+            if (selected.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        tr("${selected.size} selected", "${selected.size} টি সিলেক্ট করা"),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    TextButton(onClick = {
+                        onTrashMany(recordings.filter { it.id in selected })
+                        selected = emptySet()
+                    }) { Text(tr("Move to trash", "ট্র্যাশে পাঠান")) }
+                    TextButton(onClick = { selected = emptySet() }) { Text(tr("Cancel", "বাতিল")) }
+                }
+            } else {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text(tr("Search by name, number or date (e.g. Oct 24)", "নাম, নাম্বার বা তারিখ দিয়ে খুঁজুন")) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true
+                )
+            }
             Row(
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                filters.forEach { f ->
-                    FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) })
+                FilterMode.values().forEach { f ->
+                    FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(tr(f.en, f.bn)) })
+                }
+            }
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(tr("Sort:", "সাজান:"), style = MaterialTheme.typography.labelMedium)
+                SortMode.values().forEach { s ->
+                    FilterChip(selected = sort == s, onClick = { sort = s }, label = { Text(tr(s.en, s.bn)) })
                 }
             }
             if (filtered.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        if (recordings.isEmpty()) "No recordings yet.\nTap Record to start." else "No matches.",
+                        if (recordings.isEmpty()) tr("No recordings yet.\nTap Record to start.", "এখনো কোনো রেকর্ডিং নেই।\nশুরু করতে Record চাপুন।")
+                        else tr("No matches.", "কিছু পাওয়া যায়নি।"),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -118,8 +172,16 @@ fun RecordingsScreen(
                 ) {
                     items(filtered, key = { it.id }) { rec ->
                         RecordingRow(
-                            rec, rec.id == playingId, progress,
-                            onPlay, onSeek, onFavorite, onTrash, onShare, { renaming = it }
+                            rec = rec,
+                            playing = rec.id == playingId,
+                            progress = progress,
+                            selecting = selected.isNotEmpty(),
+                            isSelected = rec.id in selected,
+                            onToggleSelect = {
+                                selected = if (rec.id in selected) selected - rec.id else selected + rec.id
+                            },
+                            onPlay = onPlay, onSeek = onSeek, onFavorite = onFavorite,
+                            onTrash = onTrash, onShare = onShare, onRename = { renaming = it }
                         )
                     }
                 }
@@ -131,16 +193,20 @@ fun RecordingsScreen(
             icon = {
                 Icon(if (isRecording) Icons.Default.Stop else Icons.Default.Mic, contentDescription = null)
             },
-            text = { Text(if (isRecording) "Stop" else "Record") }
+            text = { Text(if (isRecording) tr("Stop", "থামান") else tr("Record", "রেকর্ড")) }
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecordingRow(
     rec: RecordingEntity,
     playing: Boolean,
     progress: Float,
+    selecting: Boolean,
+    isSelected: Boolean,
+    onToggleSelect: () -> Unit,
     onPlay: (RecordingEntity) -> Unit,
     onSeek: (Float) -> Unit,
     onFavorite: (RecordingEntity) -> Unit,
@@ -149,11 +215,20 @@ private fun RecordingRow(
     onRename: (RecordingEntity) -> Unit
 ) {
     val title = rec.contactName ?: rec.phoneNumber ?: when (rec.callType) {
-        CallType.INCOMING -> "Incoming call"
-        CallType.OUTGOING -> "Outgoing call"
-        CallType.MANUAL -> "Voice recording"
+        CallType.INCOMING -> tr("Incoming call", "ইনকামিং কল")
+        CallType.OUTGOING -> tr("Outgoing call", "আউটগোয়িং কল")
+        CallType.MANUAL -> tr("Voice recording", "ভয়েস রেকর্ডিং")
     }
-    Card(Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth().combinedClickable(
+            onClick = { if (selecting) onToggleSelect() },
+            onLongClick = onToggleSelect
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { onPlay(rec) }) {
@@ -167,6 +242,11 @@ private fun RecordingRow(
                     )
                 }
             }
+            Waveform(
+                data = rec.waveformData,
+                progress = if (playing) progress else 0f,
+                modifier = Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 8.dp)
+            )
             if (playing) {
                 Slider(value = progress, onValueChange = onSeek, modifier = Modifier.padding(horizontal = 8.dp))
             }

@@ -20,6 +20,12 @@ interface RecordingDao {
     @Query("SELECT * FROM recordings WHERE deletedAt IS NOT NULL AND deletedAt < :cutoff")
     suspend fun getExpired(cutoff: Long): List<RecordingEntity>
 
+    @Query("SELECT fileName FROM recordings")
+    suspend fun getAllNames(): List<String>
+
+    @Query("SELECT * FROM recordings WHERE deletedAt IS NULL")
+    suspend fun getAll(): List<RecordingEntity>
+
     @Insert
     suspend fun insert(recording: RecordingEntity): Long
 

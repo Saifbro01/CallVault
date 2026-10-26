@@ -22,6 +22,10 @@ class Prefs(context: Context) {
         get() = sp.getInt("bitrate_kbps", 96)
         set(v) { sp.edit().putInt("bitrate_kbps", v).apply() }
 
+    var bangla: Boolean
+        get() = sp.getBoolean("bangla", false)
+        set(v) { sp.edit().putBoolean("bangla", v).apply() }
+
     fun hasPin(): Boolean = sp.getString("pin_hash", null) != null
 
     fun setPin(pin: String) { sp.edit().putString("pin_hash", hash(pin)).apply() }

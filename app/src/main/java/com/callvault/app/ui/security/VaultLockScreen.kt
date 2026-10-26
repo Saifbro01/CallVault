@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.callvault.app.utils.tr
 
 @Composable
 fun VaultLockScreen(
@@ -41,7 +42,7 @@ fun VaultLockScreen(
         ) {
             Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(48.dp))
             Spacer(Modifier.height(12.dp))
-            Text("Enter PIN", style = MaterialTheme.typography.headlineSmall)
+            Text(tr("Enter PIN", "পিন দিন"), style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 repeat(4) { i ->
@@ -55,7 +56,7 @@ fun VaultLockScreen(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                if (error) "Wrong PIN, try again" else " ",
+                if (error) tr("Wrong PIN, try again", "ভুল পিন, আবার চেষ্টা করুন") else " ",
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -80,7 +81,7 @@ fun VaultLockScreen(
                 Spacer(Modifier.height(16.dp))
             }
             if (biometricsEnabled) {
-                TextButton(onClick = onBiometric) { Text("Use fingerprint") }
+                TextButton(onClick = onBiometric) { Text(tr("Use fingerprint", "ফিঙ্গারপ্রিন্ট ব্যবহার করুন")) }
             }
         }
     }

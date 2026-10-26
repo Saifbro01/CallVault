@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.callvault.app.data.database.RecordingEntity
 import com.callvault.app.utils.Format
+import com.callvault.app.utils.tr
 
 @Composable
 fun TrashScreen(
@@ -29,16 +30,16 @@ fun TrashScreen(
     if (confirmEmpty) {
         AlertDialog(
             onDismissRequest = { confirmEmpty = false },
-            title = { Text("Empty trash?") },
-            text = { Text("All recordings in trash will be deleted permanently.") },
-            confirmButton = { TextButton(onClick = { onEmptyTrash(); confirmEmpty = false }) { Text("Delete all") } },
-            dismissButton = { TextButton(onClick = { confirmEmpty = false }) { Text("Cancel") } }
+            title = { Text(tr("Empty trash?", "ট্র্যাশ খালি করবেন?")) },
+            text = { Text(tr("All recordings in trash will be deleted permanently.", "ট্র্যাশের সব রেকর্ডিং চিরতরে মুছে যাবে।")) },
+            confirmButton = { TextButton(onClick = { onEmptyTrash(); confirmEmpty = false }) { Text(tr("Delete all", "সব মুছুন")) } },
+            dismissButton = { TextButton(onClick = { confirmEmpty = false }) { Text(tr("Cancel", "বাতিল")) } }
         )
     }
 
     Column(Modifier.fillMaxSize()) {
         Text(
-            "Items are deleted automatically after $retentionDays days.",
+            tr("Items are deleted automatically after $retentionDays days.", "$retentionDays দিন পর আইটেম নিজে থেকে মুছে যাবে।"),
             modifier = Modifier.padding(16.dp),
             style = MaterialTheme.typography.bodyMedium
         )
@@ -47,12 +48,12 @@ fun TrashScreen(
                 Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(onClick = onRestoreAll) { Text("Restore all") }
-                OutlinedButton(onClick = { confirmEmpty = true }) { Text("Empty trash") }
+                OutlinedButton(onClick = onRestoreAll) { Text(tr("Restore all", "সব রিস্টোর")) }
+                OutlinedButton(onClick = { confirmEmpty = true }) { Text(tr("Empty trash", "ট্র্যাশ খালি করুন")) }
             }
         }
         if (trashedRecordings.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Trash is empty") }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(tr("Trash is empty", "ট্র্যাশ খালি")) }
         } else {
             LazyColumn(
                 contentPadding = PaddingValues(16.dp),
@@ -68,9 +69,9 @@ fun TrashScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(rec.contactName ?: rec.phoneNumber ?: "Recording", style = MaterialTheme.typography.titleMedium)
+                                Text(rec.contactName ?: rec.phoneNumber ?: tr("Recording", "রেকর্ডিং"), style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "${Format.date(rec.timestamp)}  •  $left days left",
+                                    "${Format.date(rec.timestamp)}  •  ${tr("$left days left", "$left দিন বাকি")}",
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
