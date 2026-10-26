@@ -18,5 +18,6 @@ data class RecordingEntity(
     val fileSizeBytes: Long = 0L,
     val isFavorite: Boolean = false,
     val audioFormat: String = "m4a",
-    val waveformData: String = ""
+    val waveformData: String = "",
+    val deletedAt: Long? = null
 )
